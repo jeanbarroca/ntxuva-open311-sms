@@ -1,0 +1,104 @@
+<?php
+// ntxuva-open311-sms.module
+/**
+ * Implements hook_menu().
+ */
+function ntxuva_sms_menu() {
+  $items = array();
+
+  $items['admin/config/ntxuva/open311-sms'] = array(
+    'title' => 'Configure Ntxuva Open311 SMS',
+    'description' => 'Settings for Ntxuva Open311 SMS Module',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('ntxuva_sms_form'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  $items['ntxuva/open311-sms'] = array(
+    'access callback' => TRUE,
+    'page callback' => 'ntxuva_sms_handle',
+    'access arguments' => array('view published content'),
+    'delivery callback' => 'drupal_json_output'
+
+  );
+
+  return $items;
+}
+?>
+
+<?php
+// ntxuva-open311-sms.module
+/**
+ * Callback: Ntxuva Open311 SMS config settings
+ *
+ */
+function ntxuva_sms_form($form, &$form_state) {
+  $form['secret_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Enter your secret key'),
+    '#default_value' => variable_get('secret_key', 'ntxuva-default-password'),
+    '#size' => 50,
+    '#maxlength' => 50,
+    '#description' => t('Secret key for secure communication with Telerivet'),
+    '#required' => TRUE,
+  );
+  return system_settings_form($form);
+}
+?>
+
+<?php
+/**
+ * Callback: Ntxuva Open311 SMS Handler
+ *
+ */
+function ntxuva_sms_handle() {
+  watchdog("ntxuva_sms", "New request: " .print_r($_POST,true));
+
+  if (empty($_POST)) {
+      header('HTTP/1.1 403 Forbidden');
+      echo "Empty post";
+      return;
+  }
+
+
+
+  $secret = variable_get('secret_key', "ntxuva-maputo");
+
+  if ($secret !== $_POST['secret']) {
+        header('HTTP/1.1 403 Forbidden');
+        echo "Invalid secret provided. \n";
+        echo "Drupal key:" . $secret . "\n";
+        echo "Post key:" . $_POST['secret'];
+        return;
+  }
+
+  else if ($_POST['event'] == 'incoming_message')
+    {
+        $content = $_POST['content'];
+        $reply = $content;
+    }
+
+        // Send reply via Telerivet Webhook API
+        header("Content-Type: application/json");
+        echo json_encode(array('messages' =>
+            array(
+                array('content' => $reply)
+            )
+        ));
+
+  }
+?>
+
+<?php
+// ntxuva-open311-sms.module
+/*
+ * Gets a note object by id.
+ *
+ * @param int $id
+ * @return object
+ */
+function ntxuva_sms_get_note($id) {
+	return db_query("SELECT * FROM {note} WHERE id='".$id."'")->fetchAll();
+}
+?>
