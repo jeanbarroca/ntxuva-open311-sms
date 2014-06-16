@@ -1,5 +1,5 @@
 <?php
-// ntxuva-open311-sms.module
+// ntxuva_sms.module
 /**
  * Implements hook_menu().
  */
@@ -19,8 +19,7 @@ function ntxuva_sms_menu() {
     'access callback' => TRUE,
     'page callback' => 'ntxuva_sms_handle',
     'access arguments' => array('view published content'),
-    'delivery callback' => 'drupal_json_output'
-
+    'delivery callback' => 'drupal_json_output',
   );
 
   return $items;
@@ -28,19 +27,32 @@ function ntxuva_sms_menu() {
 ?>
 
 <?php
-// ntxuva-open311-sms.module
+// ntxuva_sms_admin.inc
 /**
  * Callback: Ntxuva Open311 SMS config settings
  *
  */
 function ntxuva_sms_form($form, &$form_state) {
-  $form['secret_key'] = array(
+
+  global $base_url;
+  $ntxuva_default_endpoint = $base_url . "georeport/v2";
+
+  $form['ntxuva_sms_secret_key'] = array(
     '#type' => 'textfield',
     '#title' => t('Enter your secret key'),
-    '#default_value' => variable_get('secret_key', 'ntxuva-default-password'),
+    '#default_value' => variable_get('ntxuva_sms_secret_key', 'ntxuva-default-password'),
     '#size' => 50,
     '#maxlength' => 50,
     '#description' => t('Secret key for secure communication with Telerivet'),
+    '#required' => TRUE,
+  );
+  $form['nxtuva_open311_endpoint'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Enter Open311 GeoReport v2 endpoint'),
+    '#default_value' => variable_get('nxtuva_open311_endpoint', $ntxuva_default_endpoint),
+    '#size' => 100,
+    '#maxlength' => 100,
+    '#description' => t('Open311 GeoReport v2 API Endpoint for SMS interaction'),
     '#required' => TRUE,
   );
   return system_settings_form($form);
@@ -48,50 +60,118 @@ function ntxuva_sms_form($form, &$form_state) {
 ?>
 
 <?php
+// ntxuva_sms.inc
 /**
  * Callback: Ntxuva Open311 SMS Handler
  *
  */
 function ntxuva_sms_handle() {
-  watchdog("ntxuva_sms", "New request: " .print_r($_POST,true));
 
-  if (empty($_POST)) {
+  watchdog("ntxuva_sms", "New request: " .print_r($_POST,true)); // save request for debugging
+
+  if (empty($_POST)) { // check if request is ok
       header('HTTP/1.1 403 Forbidden');
       echo "Empty post";
       return;
   }
 
+  $secret = variable_get('ntxuva_sms_secret_key', "ntxuva-maputo");
 
-
-  $secret = variable_get('secret_key', "ntxuva-maputo");
-
-  if ($secret !== $_POST['secret']) {
+  if ($secret !== $_POST['secret']) { // check secret key
         header('HTTP/1.1 403 Forbidden');
         echo "Invalid secret provided. \n";
-        echo "Drupal key:" . $secret . "\n";
         echo "Post key:" . $_POST['secret'];
         return;
   }
-
   else if ($_POST['event'] == 'incoming_message')
     {
-        $content = $_POST['content'];
-        $reply = $content;
+      // Check first word and decide what user wants: submit a new service_request or find status of an existing one.
+        $content = str_word_count($_POST['content'], 1, 'àáãéíóúóèç123456789');
+
+        if ($content[0] == 'estado') ntxuva_sms_query_request($content);
+        else ntxuva_sms_create_request();
+
     }
 
-        // Send reply via Telerivet Webhook API
-        header("Content-Type: application/json");
-        echo json_encode(array('messages' =>
-            array(
-                array('content' => $reply)
-            )
-        ));
-
+  return;
   }
 ?>
 
 <?php
-// ntxuva-open311-sms.module
+
+  function ntxuva_sms_query_request() {
+/*    global $base_url;
+    $ntxuva_default_endpoint = $base_url . "georeport/v2";
+    $endpoint = variable_get('nxtuva_open311_endpoint', $ntxuva_default_endpoint); */
+
+    $content = str_word_count($_POST['content'], 1, 'àáãéíóúóèç123456789');
+
+    watchdog("ntxuva_sms", "Reading request: " .print_r($content,true)); // save request for debugging
+
+
+    // Validation: Look for request_id
+    $request_id = $content[1];
+
+    // Request status from Open311 Endpoint
+
+
+    $url = "http://mobile311.sfgov.org/open311/v2/requests.json?service_request_id={$request_id}";
+    $json = file_get_contents($url);
+    $res = json_decode($json, true);
+
+    // If successful, send status
+
+    if (isset($res[0]['status'])) {
+      $reply = "Obrigado pela sua mensagem! O estado do seu pedido '$request_id' é: ". $res[0]['status'];
+      watchdog("ntxuva_sms", "Got response from Open311: " .print_r($res,true)); // save request for debugging
+  }
+
+    // If not, apologize
+    else {
+      $reply = "Lamentavelmente, não conseguimos encontrar o seu pedido numero '$request_id'.";
+       watchdog("ntxuva_sms", "Didn't got response from Open311. '$request_id' "); // save request for debugging
+  }
+
+
+    // Send reply
+
+    header("Content-Type: application/json");
+    echo json_encode(array('messages' =>
+      array(
+        array('content' => $reply)
+        )
+    ));
+    return;
+  }
+?>
+
+<?php
+  function ntxuva_sms_create_request($content) {
+
+    $from_number = $_POST['from_number'];
+
+
+
+    // Define reply message
+
+    if ($successfull) $reply = "Thank you, your request has been created";
+    else {
+      $reply = "Sorry, your reply hasn't been created, please try again later:";
+    }
+
+    // Send reply via Telerivet Webhook API
+    header("Content-Type: application/json");
+    echo json_encode(array('messages' =>
+        array(
+            array('content' => $reply)
+        )
+    ));
+    return;
+  }
+?>
+
+<?php
+// ntxuva-open311-sms.inc
 /*
  * Gets a note object by id.
  *
@@ -99,6 +179,6 @@ function ntxuva_sms_handle() {
  * @return object
  */
 function ntxuva_sms_get_note($id) {
-	return db_query("SELECT * FROM {note} WHERE id='".$id."'")->fetchAll();
+  return db_query("SELECT * FROM {note} WHERE id='".$id."'")->fetchAll();
 }
 ?>
