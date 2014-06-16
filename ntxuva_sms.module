@@ -27,7 +27,7 @@ function ntxuva_sms_menu() {
 ?>
 
 <?php
-// ntxuva_sms_admin.inc
+// Ntxuva Open311 SMS config settings
 /**
  * Callback: Ntxuva Open311 SMS config settings
  *
@@ -60,14 +60,12 @@ function ntxuva_sms_form($form, &$form_state) {
 ?>
 
 <?php
-// ntxuva_sms.inc
+// Ntxuva Open311 SMS Handler
 /**
  * Callback: Ntxuva Open311 SMS Handler
  *
  */
 function ntxuva_sms_handle() {
-
-  watchdog("ntxuva_sms", "New request: " .print_r($_POST,true)); // save request for debugging
 
   if (empty($_POST)) { // check if request is ok
       header('HTTP/1.1 403 Forbidden');
@@ -85,12 +83,15 @@ function ntxuva_sms_handle() {
   }
   else if ($_POST['event'] == 'incoming_message')
     {
-      // Check first word and decide what user wants: submit a new service_request or find status of an existing one.
-        $content = str_word_count($_POST['content'], 1, 'àáãéíóúóèç123456789');
+        watchdog("ntxuva_sms", "New request: " .print_r($_POST,true)); // save request for debugging
 
-        if ($content[0] == 'estado') ntxuva_sms_query_request($content);
-        else ntxuva_sms_create_request();
+        // Check first word and decide what user wants: submit a new service_request or find status of an existing one.
+        $content = str_word_count($_POST['content'], 1, 'àáãéíóúóèç1234567890-');
 
+        if (($content[0]=='estado'))
+          ntxuva_sms_query_request();
+        else
+          ntxuva_sms_create_request();
     }
 
   return;
@@ -98,16 +99,22 @@ function ntxuva_sms_handle() {
 ?>
 
 <?php
-
+// ntxuva_sms.module
+/**
+ * Deals with query from user
+ *
+ */
   function ntxuva_sms_query_request() {
-/*    global $base_url;
+/*
+    This will be used in the future
+
+    global $base_url;
     $ntxuva_default_endpoint = $base_url . "georeport/v2";
-    $endpoint = variable_get('nxtuva_open311_endpoint', $ntxuva_default_endpoint); */
+    $endpoint = variable_get('nxtuva_open311_endpoint', $ntxuva_default_endpoint);
 
-    $content = str_word_count($_POST['content'], 1, 'àáãéíóúóèç123456789');
+    */
 
-    watchdog("ntxuva_sms", "Reading request: " .print_r($content,true)); // save request for debugging
-
+    $content = str_word_count($_POST['content'], 1, 'àáãéíóúóèç1234567890-');
 
     // Validation: Look for request_id
     $request_id = $content[1];
@@ -115,7 +122,7 @@ function ntxuva_sms_handle() {
     // Request status from Open311 Endpoint
 
 
-    $url = "http://mobile311.sfgov.org/open311/v2/requests.json?service_request_id={$request_id}";
+    $url = "http://psms.m4p5.com/georeport/v2/requests/{$request_id}.json";
     $json = file_get_contents($url);
     $res = json_decode($json, true);
 
@@ -129,7 +136,7 @@ function ntxuva_sms_handle() {
     // If not, apologize
     else {
       $reply = "Lamentavelmente, não conseguimos encontrar o seu pedido numero '$request_id'.";
-       watchdog("ntxuva_sms", "Didn't got response from Open311. '$request_id' "); // save request for debugging
+       watchdog("ntxuva_sms", "Didn't got response from Open311. URL: '$url' Request: '$request_id' "); // save request for debugging
   }
 
 
@@ -145,40 +152,132 @@ function ntxuva_sms_handle() {
   }
 ?>
 
+
+
 <?php
-  function ntxuva_sms_create_request($content) {
+  function ntxuva_sms_create_request() {
 
-    $from_number = $_POST['from_number'];
+    $url = "http://psms.m4p5.com/georeport/v2/requests.json";
 
+    $from_number = $_POST['from_number']."@user.com";
 
+    // Look for location by SMS code
 
-    // Define reply message
+    $content = str_word_count($_POST['content'], 1, 'àáãéíóúóèç1234567890-');
 
-    if ($successfull) $reply = "Thank you, your request has been created";
+    // Validation: Look for request_id
+    $location = $content[0];
+    $location_result = taxonomy_get_term_by_name($location);
+
+    $category = $content[1];
+    $category_result = taxonomy_get_term_by_name($category);
+
+    if(empty($location_result)) {
+      $successful=0;
+      watchdog("ntxuva_sms", "Point not found: " . print_r($location_result,true)); // save request for debugging
+      $reply = "Lamentavelmente, não conseguimos introduzir o seu pedido. O seu ponto de recolha não foi reconhecido.";
+      header("Content-Type: application/json");
+      echo json_encode(array('messages' =>
+        array(
+          array('content' => $reply)
+          )
+      ));
+      return;
+    }
     else {
-      $reply = "Sorry, your reply hasn't been created, please try again later:";
+
+      watchdog("ntxuva_sms", "Getting location taxonomy " . print_r($location_result,true)); // save request for debugging
+
+      $tid = key($location_result);
+      $location_result = $location_result[$tid];
+
+      $loc = entity_metadata_wrapper('taxonomy_term', $location_result);
+
+      $lat = $loc->field_lat->value();
+      $long = $loc->field_long->value();
+
+      watchdog("ntxuva_sms", "Status of location taxonomy: " . print_r($location_result,true) . " Lat: '$lat' Long: '$long'"); // save request for debugging
+
+
+      $successful=1;
     }
 
-    // Send reply via Telerivet Webhook API
-    header("Content-Type: application/json");
-    echo json_encode(array('messages' =>
+
+    // Look for category by SMS code
+
+    if(empty($category_result) & $successful) {
+      $successful=0;
+      watchdog("ntxuva_sms", "Deu asneira a pedir a Categoria " .print_r($category_result,true)); // save request for debugging
+      $reply = "Lamentavelmente, não conseguimos introduzir o seu pedido. A categoria não foi reconhecida.";
+      header("Content-Type: application/json");
+      echo json_encode(array('messages' =>
         array(
-            array('content' => $reply)
-        )
-    ));
+          array('content' => $reply)
+          )
+      ));
+      return;
+    }
+    else {
+      $successful=1;
+      $tid = key($category_result);
+      $category_result = $category_result[$tid];
+      $cat = entity_metadata_wrapper('taxonomy_term', $category_result);
+
+      $service_code = $cat->field_service_code->value();
+    }
+
+    // Include description
+
+    $description = $content[2];
+
+    // Prepare JSON
+    watchdog("ntxuva_sms", "Preparing JSON: " . print_r($request,true)); // save request for debugging
+
+
+    $request = array(
+    'email'      => $from_number,
+    'long'    => $long,
+    'lat'       => $lat,
+    'description' => $description,
+    'service_code'      => $service_code
+    );
+
+    $options = array(
+    'http' => array(
+    'method'  => 'POST',
+    'content' => json_encode( $request ),
+    'header'=>  "Content-Type: application/json\r\n" .
+                "Accept: application/json\r\n"
+              )
+    );
+
+    $context  = stream_context_create( $options );
+
+
+    // Send JSON POST to Submit issue
+
+    $result = file_get_contents( $url, false, $context );
+    $res = json_decode($result, true);
+
+    // Define reply message
+    // If error, send verbose message to user.
+      if (isset($res[0]['service_request_id'])) {
+        $request_id = $res[0]['service_request_id'];
+        $reply = "Obrigado pela sua mensagem! O seu pedido foi guardado com o código '$request_id'";
+        watchdog("ntxuva_sms", "Open311: New service request succesfully submitted: " .print_r($res,true)); // save request for debugging
+      }
+
+      // If not, apologize
+      else {
+        $reply = "Lamentavelmente, não conseguimos introduzir o seu pedido, por favor tente mais tarde'.";
+         watchdog("ntxuva_sms", "Open311: could not create request"); // save request for debugging
+      }
+      header("Content-Type: application/json");
+      echo json_encode(array('messages' =>
+        array(
+          array('content' => $reply)
+          )
+      ));
     return;
   }
-?>
-
-<?php
-// ntxuva-open311-sms.inc
-/*
- * Gets a note object by id.
- *
- * @param int $id
- * @return object
- */
-function ntxuva_sms_get_note($id) {
-  return db_query("SELECT * FROM {note} WHERE id='".$id."'")->fetchAll();
-}
 ?>
