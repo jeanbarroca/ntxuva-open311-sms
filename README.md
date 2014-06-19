@@ -24,17 +24,19 @@ As it is implemented, Ntxuva Open311 SMS will:
 
 Getting Started
 ----
-1. Still working on it
+1.
 
 How it works
 ----
-1. Still working on it
+1.
 
 To-Do
 ---
-1. Work on a more context-independent implementation
-2. Possibly, integrate with VoIP Drupal simply acting as a script
-3. Create required contents on installation
+1. Explain how it works and getting started
+2. Work on the semantic analysis of SMS
+4. Enhance SMS workflow
+3. Include validations of settings
+3. Clean messy code
 
 Requirements
 -----

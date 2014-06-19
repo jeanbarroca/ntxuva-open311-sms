@@ -5,6 +5,7 @@ description = "Ntxuva - SMS handler for citizen reporting"
 package = "Ntxuva"
 core = 7.x
 dependencies[] = entity
+dependencies[] = ntxuva_sms_features
 
 files[] = ntxuva_sms.module
 
