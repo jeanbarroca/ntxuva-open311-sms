@@ -34,9 +34,11 @@ To-Do
 ---
 1. Explain how it works and getting started
 2. Work on the semantic analysis of SMS
-4. Enhance SMS workflow
-3. Include validations of settings
-3. Clean messy code
+3. Enhance SMS workflow
+4. Include validations of settings
+5. Clean messy code
+6. Include debug flag
+7. Save incoming SMS as content
 
 Requirements
 -----

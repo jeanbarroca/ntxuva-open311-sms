@@ -157,7 +157,7 @@ function ntxuva_sms_handle() {
     $endpoint = variable_get('nxtuva_open311_endpoint', $ntxuva_default_endpoint);
     $url = "http://{$endpoint}requests.json";
 
-    $from_number = $_POST['from_number']."@user.com"; // to overcome Mark-a-spot's request for email
+    $from_number = $_POST['from_number']."@sms.mz"; // to overcome Mark-a-spot's request for email
 
     // Store information from SMS
     $content = str_word_count($_POST['content'], 1, 'àáãéíóúóèç1234567890-');
